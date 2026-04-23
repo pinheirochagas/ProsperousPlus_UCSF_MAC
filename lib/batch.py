@@ -44,7 +44,7 @@ def split_fasta(fasta_file: Path, batch_dir: Path, batch_size: int = DEFAULT_BAT
 
 def _run_batch(args: Tuple) -> dict:
     """Worker: run ProsperousPlus on a single batch file.  Returns status dict."""
-    batch_file, protease, out_dir = args
+    batch_file, protease, out_dir, process_num = args
     batch_path = Path(batch_file)
     out_path = Path(out_dir)
     results_csv = out_path / "results.csv"
@@ -62,7 +62,7 @@ def _run_batch(args: Tuple) -> dict:
         "--inputType",   "fasta",
         "--protease",    protease,
         "--mode",        "prediction",
-        "--processNum",  "10",
+        "--processNum",  str(process_num),
         "--PLOT",        "No",
     ]
 
@@ -98,6 +98,8 @@ def run_prediction_batched(
     batch_size: int = DEFAULT_BATCH_SIZE,
     workers: Optional[int] = None,
     batch_dir=None,
+    process_num: int = 10,
+    verbose: bool = False,
 ) -> pd.DataFrame:
     """Run prediction for a single protease on a (potentially large) FASTA.
 
@@ -107,14 +109,15 @@ def run_prediction_batched(
 
     Parameters
     ----------
-    fasta_file:  path to input FASTA
-    protease:    protease model ID (e.g. "A01.009")
-    output_dir:  directory where per-batch results are cached
-    batch_size:  sequences per batch (default 50)
-    workers:     parallel processes (default: cpu_count)
-    batch_dir:   where to write the split FASTA chunks (default: output_dir/_batches).
-                 Pass a shared directory to avoid splitting the same FASTA multiple
-                 times when several proteases run on the same input.
+    fasta_file:   path to input FASTA
+    protease:     protease model ID (e.g. "A01.009")
+    output_dir:   directory where per-batch results are cached
+    batch_size:   sequences per batch (default 50)
+    workers:      parallel batch processes (default: cpu_count)
+    batch_dir:    where to write the split FASTA chunks (default: output_dir/_batches).
+                  Pass a shared directory to avoid splitting the same FASTA multiple
+                  times when several proteases run on the same input.
+    process_num:  CPU cores passed to each ProsperousPlus subprocess via --processNum.
     """
     fasta_path = Path(fasta_file)
     out_root = Path(output_dir)
@@ -123,13 +126,15 @@ def run_prediction_batched(
     if workers is None:
         workers = max(1, mp.cpu_count() - 1)
 
-    print(f"  [{protease}] splitting into batches of {batch_size}…")
+    if verbose:
+        print(f"  [{protease}] splitting into batches of {batch_size}…")
     batch_files = split_fasta(fasta_path, batch_dir, batch_size)
-    print(f"  [{protease}] {len(batch_files)} batches, {workers} workers")
+    if verbose:
+        print(f"  [{protease}] {len(batch_files)} batches, {workers} workers")
 
     # Build work items; worker skips already-completed batches automatically
     work = [
-        (str(bf), protease, str(out_root / f"batch_{i+1:04d}"))
+        (str(bf), protease, str(out_root / f"batch_{i+1:04d}"), process_num)
         for i, bf in enumerate(batch_files)
     ]
 
@@ -144,7 +149,8 @@ def run_prediction_batched(
 
     done = sum(1 for r in results if r["status"] == "ok")
     skipped = sum(1 for r in results if r["status"] == "skipped")
-    print(f"  [{protease}] done={done}, resumed={skipped}")
+    if verbose:
+        print(f"  [{protease}] done={done}, resumed={skipped}")
 
     batch_out_dirs = [out_root / f"batch_{i+1:04d}" for i in range(len(batch_files))]
     combined = _combine_batches(batch_out_dirs)

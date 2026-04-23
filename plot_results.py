@@ -53,6 +53,163 @@ def _add_region_labels(ax, regions, y, fontsize=7):
                 fontsize=fontsize, color=C_REGION, fontweight="bold")
 
 
+def plot_residue_detail(run_dir: Path, out_path: Path):
+    """Per-residue contribution bar chart for every unique candidate peptide.
+
+    Each panel shows one candidate 8-mer: green bars = CathL contribution,
+    orange bars = CathB contribution, stacked per S/T position.
+    Non-S/T positions are shown as grey zero-height markers so the sequence
+    context is visible.  Negative contributions are drawn below zero.
+    """
+    def load(rel):
+        p = run_dir / rel
+        if not p.exists():
+            sys.exit(f"ERROR: missing file {p}")
+        return pd.read_csv(p)
+
+    cands   = load("step5_scores/biomarker_candidates.csv")
+    residue = load("step5_scores/per_residue_contributions.csv")
+
+    # ── Deduplicate: keep one representative window per unique mutation_sum
+    # group within each sequence_id (overlapping windows share the same sum)
+    cands_sorted = cands.sort_values("position")
+    seen = set()
+    unique_cands = []
+    for _, row in cands_sorted.iterrows():
+        key = (row["sequence_id"], round(row["mutation_sum"], 4))
+        if key not in seen:
+            seen.add(key)
+            unique_cands.append(row)
+    unique_cands = sorted(unique_cands,
+                          key=lambda r: r["mutation_sum"], reverse=True)
+
+    n = len(unique_cands)
+    if n == 0:
+        print("No candidates to plot.")
+        return
+
+    # Build a lookup: abs_position → (contrib_L, contrib_B)
+    res_lookup = {
+        row["abs_position"]: (row["contrib_L"], row["contrib_B"])
+        for _, row in residue.iterrows()
+    }
+
+    # Shared y-scale across all panels
+    ymax = max(0.1, max(a + max(0, b) for a, b in res_lookup.values()) * 1.15)
+    ymin = min(0.0, min(min(a, 0) + min(b, 0) for a, b in res_lookup.values()) * 1.15)
+
+    # Cap at top-10 candidates and arrange in at most 2 columns of 5
+    import math
+    MAX_CANDS = 10
+    MAX_ROWS  = 5
+    unique_cands = unique_cands[:MAX_CANDS]
+    n        = len(unique_cands)
+    n_cols   = math.ceil(n / MAX_ROWS)
+    n_rows   = min(n, MAX_ROWS)
+
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(10 * n_cols, 3.2 * n_rows),
+        squeeze=False,
+    )
+    fig.patch.set_facecolor("white")
+    fig.suptitle(
+        "Per-residue S/T contribution to cleavage resistance",
+        fontsize=13, fontweight="bold", y=1.01,
+    )
+
+    # Hide any unused axes (row-major order)
+    for idx in range(n, n_rows * n_cols):
+        r, c = idx // n_cols, idx % n_cols
+        axes[r][c].set_visible(False)
+
+    for rank, cand in enumerate(unique_cands, 1):
+        row = (rank - 1) // n_cols   # left→right, top→bottom
+        col = (rank - 1) % n_cols
+        ax  = axes[row][col]
+
+        peptide  = cand["peptide"]
+        center   = int(cand["position"])   # cleavage-site position (1-indexed)
+        seq_id   = cand["sequence_id"]
+        mut_sum  = cand["mutation_sum"]
+        # region label: last two underscore-delimited tokens, e.g. TAU_HUMAN_402-461
+        region_label = "_".join(seq_id.split("_")[-3:]) if "_" in seq_id else seq_id
+
+        # 8-mer spans center-3 … center+4  (window center = pos 4 of 8-mer)
+        pep_start = center - 3
+        xs = list(range(8))           # bar x-positions 0–7
+
+        contrib_L = []
+        contrib_B = []
+        colors_x  = []
+        for i, aa in enumerate(peptide):
+            abs_pos = pep_start + i
+            if abs_pos in res_lookup:
+                cL, cB = res_lookup[abs_pos]
+            else:
+                cL, cB = 0.0, 0.0
+            contrib_L.append(cL)
+            contrib_B.append(cB)
+            colors_x.append(C_CATHL if aa in ("S", "T") else "#cccccc")
+
+        contrib_L = np.array(contrib_L)
+        contrib_B = np.array(contrib_B)
+
+        # Split positive and negative portions for correct stacking
+        pos_L = np.clip(contrib_L, 0, None)
+        neg_L = np.clip(contrib_L, None, 0)
+        pos_B = np.clip(contrib_B, 0, None)
+        neg_B = np.clip(contrib_B, None, 0)
+
+        bar_w = 0.55
+
+        # Positive stack: CathL (green) then CathB (orange) on top
+        ax.bar(xs, pos_L, width=bar_w, color=C_CATHL, alpha=0.85, label="CathL (S/T→P)")
+        ax.bar(xs, pos_B, width=bar_w, bottom=pos_L, color=C_CATHB, alpha=0.85, label="CathB (S/T→E)")
+
+        # Negative stack: below zero
+        ax.bar(xs, neg_L, width=bar_w, color=C_CATHL, alpha=0.55)
+        ax.bar(xs, neg_B, width=bar_w, bottom=neg_L, color=C_CATHB, alpha=0.55)
+
+        ax.axhline(0, color="#888888", lw=0.7)
+
+        # X-axis: residue letters, S/T in bold colour
+        ax.set_xticks(xs)
+        labels = []
+        for i, aa in enumerate(peptide):
+            abs_pos = pep_start + i
+            labels.append(f"{aa}\n{abs_pos}")
+        ax.set_xticklabels(labels, fontsize=14)
+        for tick, aa in zip(ax.get_xticklabels(), peptide):
+            if aa in ("S", "T"):
+                tick.set_color(C_ABOVE)
+                tick.set_fontweight("bold")
+            else:
+                tick.set_color("#666666")
+
+        ax.set_ylim(ymin, ymax)
+        ax.set_xlim(-0.6, 7.6)
+        ax.set_ylabel("Contribution", fontsize=11)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.tick_params(axis="y", labelsize=10)
+
+        ax.set_title(
+            f"#{rank}  {peptide}  |  center pos {center}  |  {region_label}  |  "
+            f"mut sum = {mut_sum:.3f}",
+            fontsize=10, fontweight="bold", loc="left", pad=4,
+        )
+
+        # Legend only on first panel
+        if rank == 1:  # noqa: SIM102
+            ax.legend(fontsize=10, loc="upper right", framealpha=0.7)
+
+    fig.tight_layout()
+    plt.savefig(out_path, dpi=200, bbox_inches="tight", facecolor="white")
+    plt.close()
+    print(f"Saved: {out_path}")
+
+
 def plot_pipeline(run_dir: Path, out_path: Path):
     # ── Load data ──────────────────────────────────────────────────────────
     def load(rel):
@@ -129,17 +286,6 @@ def plot_pipeline(run_dir: Path, out_path: Path):
     ax2.legend(loc="upper right", fontsize=8, framealpha=0.7)
     ax2.tick_params(labelbottom=False)
 
-    # label top 6 candidates
-    top = cands.nlargest(6, "mutation_sum")
-    for _, c in top.iterrows():
-        ax2.annotate(
-            f"{c['peptide']}\n(pos {int(c['position'])})",
-            xy=(c["position"], c["mutation_sum"]),
-            xytext=(0, 8), textcoords="offset points",
-            ha="center", fontsize=6.5, color=C_ABOVE,
-            arrowprops=dict(arrowstyle="-", color=C_ABOVE, lw=0.5),
-        )
-
     # ── TRACK 3 — CathL / CathB contributions ─────────────────────────────
     _shade_regions(ax3, regions)
     ax3.bar(scores["position"], scores["cathL_diff"].clip(lower=0),
@@ -164,11 +310,12 @@ def plot_pipeline(run_dir: Path, out_path: Path):
         ax4.scatter(c["position"], 0.5, marker="D", s=60,
                     color=color, zorder=5, edgecolors="white", linewidths=0.4)
 
-    # label top 5 only to avoid clutter
-    for _, c in cands.nlargest(5, "mutation_sum").iterrows():
-        ax4.text(c["position"], 0.82, c["peptide"],
-                 ha="center", va="bottom", fontsize=6,
-                 color="black", rotation=45)
+    # label the single top candidate only
+    top1 = cands.nlargest(1, "mutation_sum").iloc[0]
+    ax4.text(top1["position"], 0.82,
+             f"{top1['peptide']} (pos {int(top1['position'])})",
+             ha="center", va="bottom", fontsize=7,
+             color=C_ABOVE, fontweight="bold")
 
     ax4.set_ylim(0, 1.5)
     ax4.set_yticks([])
@@ -221,8 +368,11 @@ def main():
     if not run_dir.is_dir():
         sys.exit(f"ERROR: run directory not found: {run_dir}")
 
-    out_path = Path(args.out) if args.out else run_dir / "pipeline_summary.png"
+    out_path    = Path(args.out) if args.out else run_dir / "pipeline_summary.png"
+    detail_path = out_path.with_name("residue_detail.png")
+
     plot_pipeline(run_dir, out_path)
+    plot_residue_detail(run_dir, detail_path)
 
 
 if __name__ == "__main__":

@@ -29,6 +29,80 @@ def mutate_ST_to_E(sequence):
     return sequence.replace('S', 'E').replace('T', 'E')
 
 
+def create_single_mutant_fastas(
+    regions_df,
+    full_sequences,
+    output_dir,
+    extension: int = 5,
+    orig_name: str = "original.fasta",
+    mutp_name: str = "single_ST_to_P.fasta",
+    mute_name: str = "single_ST_to_E.fasta",
+):
+    """Create FASTA files for single-position S/T mutations.
+
+    For each S or T residue in every extended region, one mutant sequence is
+    written: the residue is changed to P (for CathL) or E (for CathB) while
+    every other position is left unchanged.  Record IDs use the scheme
+    ``{region_id}_st{k}`` where *k* is the 1-based position within the
+    extended region.
+
+    FASTAs are only written if they do not already exist, so resume works
+    without re-running this function.
+
+    Returns
+    -------
+    st_positions : dict
+        ``{region_id: [(k, aa, abs_pos), ...]}`` — for each region, the list
+        of mutable positions where *k* is 1-based within the extended region,
+        *aa* is the original amino acid (S or T), and *abs_pos* is the
+        1-based position in the full input protein.
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    orig_out = output_path / orig_name
+    mutp_out = output_path / mutp_name
+    mute_out = output_path / mute_name
+    need_write = not (orig_out.exists() and mutp_out.exists() and mute_out.exists())
+
+    original_records = []
+    single_P_records = []
+    single_E_records = []
+    st_positions = {}
+
+    for _, row in regions_df.iterrows():
+        seq_id   = row['sequence_id']
+        full_seq = full_sequences[seq_id]
+
+        extended, new_start, new_end = extend_region(
+            full_seq, row['start_position'], row['end_position'], extension
+        )
+
+        region_id = f"{seq_id}_{new_start}-{new_end}"
+        original_records.append(SeqRecord(Seq(extended), id=region_id, description=""))
+
+        st_list = []
+        for k, aa in enumerate(extended, 1):
+            if aa in ('S', 'T'):
+                mutant_id = f"{region_id}_st{k}"
+                single_P_records.append(
+                    SeqRecord(Seq(extended[:k-1] + 'P' + extended[k:]), id=mutant_id, description="")
+                )
+                single_E_records.append(
+                    SeqRecord(Seq(extended[:k-1] + 'E' + extended[k:]), id=mutant_id, description="")
+                )
+                st_list.append((k, aa, new_start + k - 1))
+
+        st_positions[region_id] = st_list
+
+    if need_write:
+        SeqIO.write(original_records, orig_out, "fasta")
+        SeqIO.write(single_P_records, mutp_out, "fasta")
+        SeqIO.write(single_E_records, mute_out, "fasta")
+
+    return st_positions
+
+
 def create_mutation_fastas(
     regions_df,
     full_sequences,

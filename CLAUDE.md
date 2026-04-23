@@ -44,10 +44,26 @@ python run_pipeline.py --fasta data/brain_elevated/...same file...
 | Mutation proteases | C01.032 (CathL), C01.060 (CathB) | Run on original + mutant sequences |
 | `mutation_threshold` | 0.475 | Min mutation sum to call a candidate (= pTau217 level) |
 
-**Mutation formula:**
+**Per-residue contribution (Step 4–5):**
+
+For every S or T at position *k* in an extended region, a **single-position mutant** is generated (only that one residue changed, everything else unchanged):
+
 ```
-mutation_sum = (CathL_original − CathL_ST→P) + (CathB_original − CathB_ST→E)
+contrib_L(k) = CathL_original[window_k] − CathL_singleP_k[window_k]   # S/T→P
+contrib_B(k) = CathB_original[window_k] − CathB_singleE_k[window_k]   # S/T→E
+contrib_total(k) = contrib_L(k) + contrib_B(k)
 ```
+
+`window_k` is the 8-mer window whose cleavage site falls on position *k*.
+A **positive** contribution means that S/T is protecting the peptide from cleavage — mutating it away *reduces* the predicted cleavage score.
+
+**Window-level mutation sum (Step 5 output):**
+
+```
+mutation_sum(window) = Σ contrib_L(k) + Σ contrib_B(k)   for all S/T k within the 8-mer
+```
+
+Windows with `mutation_sum ≥ 0.475` (= pTau217 threshold) are called **biomarker candidates**.
 
 ---
 
@@ -100,13 +116,13 @@ If a run is interrupted, re-running the same command skips finished batches auto
 
 ## Library (`lib/`)
 
-| Module | Functions |
-|--------|-----------|
+| Module | Key functions |
+|--------|---------------|
 | `predict.py` | `run_prediction()` — single FASTA, single protease |
 | `batch.py` | `run_prediction_batched()` — splits large FASTA, parallel, resumable |
 | `regions.py` | `find_low_cleavage_regions()` — detect resistant stretches |
-| `mutate.py` | `load_sequences()`, `create_mutation_fastas()` — generate S,T→P/E FASTAs |
-| `compare.py` | `calculate_mutation_sum()`, `find_candidates()` — score and rank positions |
+| `mutate.py` | `load_sequences()`, `create_single_mutant_fastas()` — one mutant per S/T position |
+| `compare.py` | `calculate_single_residue_mutation_sum()`, `find_candidates()` — per-residue contributions & window sums |
 
 ---
 
