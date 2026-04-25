@@ -142,3 +142,25 @@ def calculate_mutation_sum(orig_L, mut_P, orig_B, mut_E):
 def find_candidates(df, threshold=0.45):
     """Find positions with mutation_sum >= threshold."""
     return df[df['mutation_sum'] >= threshold].sort_values('mutation_sum', ascending=False)
+
+
+def find_residue_candidates(residues: pd.DataFrame, threshold: float = 0.475) -> pd.DataFrame:
+    """Filter per-residue contributions to those whose contrib_total >= threshold.
+
+    Each row represents a single S/T residue that individually contributes
+    enough cleavage resistance to be a biomarker candidate.
+
+    Parameters
+    ----------
+    residues  : DataFrame returned by calculate_single_residue_mutation_sum
+                (columns: region_id, abs_position, aa, contrib_L, contrib_B, contrib_total)
+    threshold : minimum contrib_total to call a residue a candidate
+
+    Returns
+    -------
+    DataFrame with columns renamed for consistency with the merge pipeline:
+        sequence_id, position, aa, contrib_L, contrib_B, contrib_total
+    """
+    candidates = residues[residues["contrib_total"] >= threshold].copy()
+    candidates = candidates.rename(columns={"region_id": "sequence_id", "abs_position": "position"})
+    return candidates.sort_values("contrib_total", ascending=False).reset_index(drop=True)

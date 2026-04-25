@@ -44,7 +44,7 @@ def split_fasta(fasta_file: Path, batch_dir: Path, batch_size: int = DEFAULT_BAT
 
 def _run_batch(args: Tuple) -> dict:
     """Worker: run ProsperousPlus on a single batch file.  Returns status dict."""
-    batch_file, protease, out_dir, process_num = args
+    batch_file, protease, out_dir, process_num, plot = args
     batch_path = Path(batch_file)
     out_path = Path(out_dir)
     results_csv = out_path / "results.csv"
@@ -63,7 +63,7 @@ def _run_batch(args: Tuple) -> dict:
         "--protease",    protease,
         "--mode",        "prediction",
         "--processNum",  str(process_num),
-        "--PLOT",        "No",
+        "--PLOT",        "Yes" if plot else "No",
     ]
 
     result = subprocess.run(cmd, cwd=CODE_ROOT, capture_output=True, text=True)
@@ -100,6 +100,7 @@ def run_prediction_batched(
     batch_dir=None,
     process_num: int = 10,
     verbose: bool = False,
+    plot: bool = False,
 ) -> pd.DataFrame:
     """Run prediction for a single protease on a (potentially large) FASTA.
 
@@ -124,7 +125,7 @@ def run_prediction_batched(
     batch_dir = Path(batch_dir) if batch_dir is not None else out_root / "_batches"
 
     if workers is None:
-        workers = max(1, mp.cpu_count() - 1)
+        workers = 1   # serialize batches so each gets full process_num cores
 
     if verbose:
         print(f"  [{protease}] splitting into batches of {batch_size}…")
@@ -134,7 +135,7 @@ def run_prediction_batched(
 
     # Build work items; worker skips already-completed batches automatically
     work = [
-        (str(bf), protease, str(out_root / f"batch_{i+1:04d}"), process_num)
+        (str(bf), protease, str(out_root / f"batch_{i+1:04d}"), process_num, plot)
         for i, bf in enumerate(batch_files)
     ]
 

@@ -8,7 +8,7 @@ from pathlib import Path
 CODE_ROOT = Path('/shared/macdata/groups/ppc/code/ProsperousPlus')
 
 
-def run_prediction(fasta_file, protease, output_dir, process_num: int = 10):
+def run_prediction(fasta_file, protease, output_dir, process_num: int = 10, plot: bool = False):
     """Run prediction for a single protease.
 
     Parameters
@@ -32,7 +32,7 @@ def run_prediction(fasta_file, protease, output_dir, process_num: int = 10):
         '--protease', protease,
         '--mode', 'prediction',
         '--processNum', str(process_num),
-        '--PLOT', 'No'
+        '--PLOT', 'Yes' if plot else 'No'
     ]
     
     result = subprocess.run(cmd, cwd=CODE_ROOT, capture_output=True, text=True)

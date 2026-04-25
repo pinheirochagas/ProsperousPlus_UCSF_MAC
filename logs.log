@@ -1,0 +1,99 @@
+
+============================================================
+ Input:      data/original_files/tau_only.fasta  (1 sequence(s))
+ Output:     results/tau_only_2026-04-23_2200
+ Batch size: 50
+ Cores:      20 total  (10/job in Step 1, 5/job in Step 4)
+ Started:    2026-04-23 22:00:48
+============================================================
+
+[Step 1] Cleavage predictions (Cathepsin D + Legumain) [2 parallel]
+  [A01.009] splitting into batches of 50…
+  [C13.004] splitting into batches of 50…
+  [A01.009] 1 batches, 23 workers
+  [C13.004] 1 batches, 23 workers
+  [A01.009] done=1, resumed=0
+  [C13.004] done=1, resumed=0
+  Cathepsin D:  751 window scores  (1 sequences)
+  Legumain:     751 window scores  (1 sequences)
+  → done in 59.2s
+
+[Step 2] Finding low-cleavage regions
+  Found 9 protected region(s)  (min_length=25 aa, max_exceptions=2, threshold=0.3):
+    sp|P10636|TAU_HUMAN: pos 44–72 (29 aa)
+    sp|P10636|TAU_HUMAN: pos 82–113 (32 aa)
+    sp|P10636|TAU_HUMAN: pos 137–176 (40 aa)
+    sp|P10636|TAU_HUMAN: pos 194–218 (25 aa)
+    sp|P10636|TAU_HUMAN: pos 232–269 (38 aa)
+    sp|P10636|TAU_HUMAN: pos 311–344 (34 aa)
+    sp|P10636|TAU_HUMAN: pos 346–373 (28 aa)
+    sp|P10636|TAU_HUMAN: pos 407–456 (50 aa)
+    sp|P10636|TAU_HUMAN: pos 468–543 (76 aa)
+  → done in 1.3s
+
+[Step 3] Creating single-mutant FASTAs
+    sp|P10636|TAU_HUMAN_39-77: 12 mutable S/T residues
+    sp|P10636|TAU_HUMAN_77-118: 5 mutable S/T residues
+    sp|P10636|TAU_HUMAN_132-181: 6 mutable S/T residues
+    sp|P10636|TAU_HUMAN_189-223: 1 mutable S/T residues
+    sp|P10636|TAU_HUMAN_227-274: 9 mutable S/T residues
+    sp|P10636|TAU_HUMAN_306-349: 4 mutable S/T residues
+    sp|P10636|TAU_HUMAN_341-378: 4 mutable S/T residues
+    sp|P10636|TAU_HUMAN_402-461: 16 mutable S/T residues
+    sp|P10636|TAU_HUMAN_463-548: 20 mutable S/T residues
+  Total: 9 region(s), 77 single-mutant sequences per protease
+  single_ST_to_P.fasta  (77 seqs × S/T→P)
+  single_ST_to_E.fasta  (77 seqs × S/T→E)
+  → done in 0.2s
+
+[Step 4] Predictions on original + single mutants [4 parallel, 5 cores each]
+  [C01.032] splitting into batches of 50…
+  [C01.032] splitting into batches of 50…
+  [C01.060] splitting into batches of 50…
+  [C01.060] splitting into batches of 50…
+  [C01.060] 1 batches, 23 workers
+  [C01.032] 1 batches, 23 workers
+  [C01.032] 2 batches, 23 workers
+  [C01.060] 2 batches, 23 workers
+  [C01.060] done=1, resumed=0
+  [C01.032] done=1, resumed=0
+  [C01.060] done=2, resumed=0
+  [C01.032] done=2, resumed=0
+  CathL original:   379 rows  (9 sequences)
+  CathL single-P:   3,914 rows  (77 mutant sequences × windows)
+  CathB original:   379 rows  (9 sequences)
+  CathB single-E:   3,914 rows  (77 mutant sequences × windows)
+  → done in 3.0min
+
+[Step 5] Per-residue contributions and mutation sums
+  Window positions scored:  379
+  S/T residues contributing: 77
+  Windows with sum > 0:     243
+  Candidates (sum ≥ 0.475): 70
+  → done in 0.5s
+
+  Top biomarker candidates:
+    #  Position  Peptide      Mut Sum   CathL Δ   CathB Δ
+  ----------------------------------------------------------
+    1       446  SSVTSRTG      1.5823    1.3528    0.2295
+    2       445  VSSVTSRT      1.5823    1.3528    0.2295
+    3       448  VTSRTGSS      1.4726    0.8444    0.6282
+    4       449  TSRTGSSG      1.4726    0.8444    0.6282
+    5       447  SVTSRTGS      1.4063    0.8186    0.5877
+    6       170  TRQPSGTG      1.2947    1.1518    0.1429
+    7       169  ATRQPSGT      1.2947    1.1518    0.1429
+    8       442  PKYVSSVT      1.0673    1.1931   -0.1258
+    9       504  SSGEPPKS      1.0488    0.7270    0.3218
+   10       443  KYVSSVTS      1.0320    1.2856   -0.2536
+   11       444  YVSSVTSR      1.0320    1.2856   -0.2536
+   12       167  REATRQPS      0.9104    0.7719    0.1385
+   13       168  EATRQPSG      0.9104    0.7719    0.1385
+   14       174  SGTGPEDT      0.8860    0.7652    0.1208
+   15       149  SHQLMSGM      0.8641    0.7029    0.1612
+
+============================================================
+ Done in 4.0min  —  results in: results/tau_only_2026-04-23_2200/
+   biomarker_candidates.csv  (70 candidates)
+   mutation_scores.csv  (379 positions)
+   per_residue_contributions.csv  (77 S/T residues)
+============================================================

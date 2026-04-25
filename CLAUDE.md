@@ -90,7 +90,78 @@ results/tau_only_2026-04-23_1430/        ← one folder per input FASTA + date +
   step5_scores/
     mutation_scores.csv                  # all positions with mutation sums
     biomarker_candidates.csv             # positions above 0.475 threshold
+  step6_ptm/                            ← written by annotate_ptm.py (optional)
+    annotated_candidates.csv             # long format: one row per (candidate × source) hit
+    annotated_summary.csv               # one row per residue, ranked by n_sources then contrib_total
 ```
+
+---
+
+## PTM annotation (Step 6 — optional, standalone)
+
+Annotates Step 5 biomarker candidates with known human phosphorylation evidence
+from three open databases (EPSD 2.0, dbPTM, UniProt).
+
+### One-time data download
+
+```bash
+# EPSD 2.0 — human phosphorylation sites
+mkdir -p data/reference/ptm_sources/epsd
+curl -L -o data/reference/ptm_sources/epsd/Homo_sapiens.zip \
+  "http://epsd.biocuckoo.cn/Download/Homo%20sapiens.zip"
+unzip -d data/reference/ptm_sources/epsd/ \
+  data/reference/ptm_sources/epsd/Homo_sapiens.zip
+
+# dbPTM — experimental phosphorylation sites (all species; filtered to human at runtime)
+# Visit https://biomics.lab.nycu.edu.tw/dbPTM/download.php
+# → "Experimental & Putative PTM Sites" → Phosphorylation → download MAC/Linux .tgz
+mkdir -p data/reference/ptm_sources/dbptm
+tar -xzf ~/Downloads/Phosphorylation.tgz -C data/reference/ptm_sources/dbptm/
+
+# UniProt — Swiss-Prot curated modified-residue annotations (human, reviewed)
+mkdir -p data/reference/ptm_sources/uniprot
+curl -L --compressed \
+  -o data/reference/ptm_sources/uniprot/human_reviewed_modres.tsv \
+  "https://rest.uniprot.org/uniprotkb/stream?query=%28organism_id%3A9606%29%20AND%20%28reviewed%3Atrue%29&format=tsv&fields=accession,id,ft_mod_res"
+```
+
+### Run annotation
+
+```bash
+conda activate prosperousplus
+cd /shared/macdata/groups/ppc/projects/ProsperousPlus
+
+# Annotate tau candidates (output written to results/<run>/step6_ptm/)
+python annotate_ptm.py \
+  --candidates results/tau_only_2026-04-23_1430/step5_scores/biomarker_candidates.csv
+
+# Annotate ALL scored S/T residues (not just above-threshold candidates)
+python annotate_ptm.py \
+  --candidates results/tau_only_2026-04-23_1430/step5_scores/per_residue_contributions.csv
+
+# Custom source file paths (defaults shown above are used when flags are omitted)
+python annotate_ptm.py \
+  --candidates results/<run>/step5_scores/biomarker_candidates.csv \
+  --epsd    "data/reference/ptm_sources/epsd/Homo sapiens.txt" \
+  --dbptm   data/reference/ptm_sources/dbptm/Phosphorylation \
+  --uniprot data/reference/ptm_sources/uniprot/human_reviewed_modres.tsv \
+  --out     results/<run>/step6_ptm/
+```
+
+### Output columns
+
+`annotated_summary.csv` (one row per residue, ranked by evidence strength):
+
+| Column | Meaning |
+|--------|---------|
+| `uniprot_id` | UniProt accession |
+| `position` | 1-based residue position in full protein |
+| `aa` | Amino acid (S or T) |
+| `contrib_total` | Pipeline cleavage-protection score |
+| `n_sources` | Number of databases confirming this site (max 3) |
+| `sources` | Semicolon-separated database names (EPSD, dbPTM, UniProt) |
+| `n_pubmed` | Count of unique PubMed IDs across all confirming sources |
+| `pubmed_ids` | Semicolon-separated PMIDs (look up at pubmed.ncbi.nlm.nih.gov) |
 
 ---
 
@@ -123,6 +194,7 @@ If a run is interrupted, re-running the same command skips finished batches auto
 | `regions.py` | `find_low_cleavage_regions()` — detect resistant stretches |
 | `mutate.py` | `load_sequences()`, `create_single_mutant_fastas()` — one mutant per S/T position |
 | `compare.py` | `calculate_single_residue_mutation_sum()`, `find_candidates()` — per-residue contributions & window sums |
+| `ptm_annotate.py` | `load_epsd()`, `load_dbptm()`, `load_uniprot_modres()`, `annotate_candidates()`, `summarize_annotations()` — PTM annotation (Step 6) |
 
 ---
 
@@ -130,6 +202,15 @@ If a run is interrupted, re-running the same command skips finished batches auto
 
 ```
 data/
+  reference/                   # PTM annotation reference databases (one-time download)
+    ptm_sources/
+      epsd/
+        Homo sapiens.txt        # EPSD 2.0 human phospho sites (tab-delimited, has header)
+        Homo sapiens.fasta      # EPSD protein FASTA sequences
+      dbptm/
+        Phosphorylation         # dbPTM experimental phosphorylation (all species, no header)
+      uniprot/
+        human_reviewed_modres.tsv  # UniProt Swiss-Prot human modified-residue features
   original_files/          # canonical reference sequences
     tau_only.fasta          # full-length human tau (P10636)
     brain_single.fasta      # small brain-enriched protein subset

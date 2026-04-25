@@ -8,4 +8,13 @@ from .compare import (
     calculate_mutation_sum,
     calculate_single_residue_mutation_sum,
     find_candidates,
+    find_residue_candidates,
+)
+from .merge import merge_cohort_results
+from .ptm_annotate import (
+    load_epsd,
+    load_dbptm,
+    load_uniprot_modres,
+    annotate_candidates,
+    summarize_annotations,
 )

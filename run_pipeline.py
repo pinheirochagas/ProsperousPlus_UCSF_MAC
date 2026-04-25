@@ -69,7 +69,7 @@ from lib import (
     run_prediction, run_prediction_batched,
     find_low_cleavage_regions,
     load_sequences, create_single_mutant_fastas,
-    calculate_single_residue_mutation_sum, find_candidates,
+    calculate_single_residue_mutation_sum, find_residue_candidates,
 )
 
 # ── Protease model IDs ────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ def _csv_ready(path: Path) -> bool:
 
 def predict(fasta_file: Path, protease: str, out_csv: Path,
             out_dir: Path, batch_size: int, process_num: int,
-            batch_dir: Optional[Path] = None) -> pd.DataFrame:
+            batch_dir: Optional[Path] = None, plot: bool = False) -> pd.DataFrame:
     """Run prediction, skipping if out_csv already exists."""
     if _csv_ready(out_csv):
         return pd.read_csv(out_csv)
@@ -103,10 +103,12 @@ def predict(fasta_file: Path, protease: str, out_csv: Path,
                                     batch_size=batch_size,
                                     process_num=process_num,
                                     batch_dir=batch_dir,
-                                    verbose=False)
+                                    verbose=False,
+                                    plot=plot)
     else:
         df = run_prediction(fasta_file, protease, out_dir,
-                            process_num=process_num)
+                            process_num=process_num,
+                            plot=plot)
 
     df.to_csv(out_csv, index=False)
     return df
@@ -130,6 +132,15 @@ def main():
         "--cores", type=int, default=20,
         help="Total CPU cores to use, divided evenly across concurrent jobs (default: 20)",
     )
+    parser.add_argument(
+        "--plot", action="store_true", default=False,
+        help="Enable ProsperousPlus plots (default: off)",
+    )
+    parser.add_argument(
+        "--skip-step1", action="store_true", default=False,
+        help="Skip Step 1 predictions — step1_predictions/*.csv must already exist "
+             "(used by run_cohort.py after the cohort-level Phase 1 run)",
+    )
     args = parser.parse_args()
 
     fasta_file = Path(args.fasta)
@@ -141,6 +152,7 @@ def main():
     out_root   = Path("results") / run_name
     batch_size = args.batch_size
     cores      = args.cores
+    plot       = args.plot
 
     # ── Output paths ─────────────────────────────────────────────────────────
     pred_dir    = out_root / "step1_predictions"
@@ -204,15 +216,25 @@ def main():
 
     # ── Step 1 ───────────────────────────────────────────────────────────────
     t0 = time.time()
-    print("\n[Step 1] Cleavage predictions (Cathepsin D + Legumain) [2 parallel]")
-
-    with ThreadPoolExecutor(max_workers=2) as ex:
-        fut_D = ex.submit(predict, fasta_file, CATHEPSIN_D, cathD_csv,
-                          pred_dir / "cathepsinD", batch_size, pn_step1, step1_batches)
-        fut_L = ex.submit(predict, fasta_file, LEGUMAIN,    legumain_csv,
-                          pred_dir / "legumain",   batch_size, pn_step1, step1_batches)
-        pred_D = fut_D.result()
-        pred_L = fut_L.result()
+    if args.skip_step1:
+        print("\n[Step 1] Cleavage predictions — pre-computed (skipping)")
+        if not _csv_ready(cathD_csv) or not _csv_ready(legumain_csv):
+            sys.exit(
+                "ERROR: --skip-step1 is set but step1_predictions CSVs are missing.\n"
+                f"  Expected: {cathD_csv}\n"
+                f"           {legumain_csv}"
+            )
+        pred_D = pd.read_csv(cathD_csv)
+        pred_L = pd.read_csv(legumain_csv)
+    else:
+        print("\n[Step 1] Cleavage predictions (Cathepsin D + Legumain) [2 parallel]")
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_D = ex.submit(predict, fasta_file, CATHEPSIN_D, cathD_csv,
+                              pred_dir / "cathepsinD", batch_size, pn_step1, step1_batches, plot)
+            fut_L = ex.submit(predict, fasta_file, LEGUMAIN,    legumain_csv,
+                              pred_dir / "legumain",   batch_size, pn_step1, step1_batches, plot)
+            pred_D = fut_D.result()
+            pred_L = fut_L.result()
 
     print(f"  Cathepsin D:  {len(pred_D):,} window scores  ({pred_D['sequence_id'].nunique()} sequences)")
     print(f"  Legumain:     {len(pred_L):,} window scores  ({pred_L['sequence_id'].nunique()} sequences)")
@@ -277,13 +299,13 @@ def main():
 
     with ThreadPoolExecutor(max_workers=4) as ex:
         fut_orig_L   = ex.submit(predict, orig_fasta,     CATHEPSIN_L, cathL_orig_csv,
-                                 mutpred_dir / "cathL_original", batch_size, pn_step4, orig_batches)
+                                 mutpred_dir / "cathL_original", batch_size, pn_step4, orig_batches, plot)
         fut_single_L = ex.submit(predict, single_P_fasta, CATHEPSIN_L, cathL_single_csv,
-                                 mutpred_dir / "cathL_single_P", batch_size, pn_step4, mutp_batches)
+                                 mutpred_dir / "cathL_single_P", batch_size, pn_step4, mutp_batches, plot)
         fut_orig_B   = ex.submit(predict, orig_fasta,     CATHEPSIN_B, cathB_orig_csv,
-                                 mutpred_dir / "cathB_original", batch_size, pn_step4, orig_batches)
+                                 mutpred_dir / "cathB_original", batch_size, pn_step4, orig_batches, plot)
         fut_single_B = ex.submit(predict, single_E_fasta, CATHEPSIN_B, cathB_single_csv,
-                                 mutpred_dir / "cathB_single_E", batch_size, pn_step4, mute_batches)
+                                 mutpred_dir / "cathB_single_E", batch_size, pn_step4, mute_batches, plot)
         orig_L   = fut_orig_L.result()
         single_L = fut_single_L.result()
         orig_B   = fut_orig_B.result()
@@ -299,9 +321,9 @@ def main():
 
     # ── Step 5 ───────────────────────────────────────────────────────────────
     t0 = time.time()
-    print("\n[Step 5] Per-residue contributions and mutation sums")
+    print("\n[Step 5] Per-residue contributions and biomarker candidates")
     if _csv_ready(scores_csv) and _csv_ready(candidates_csv):
-        print("  [resume] mutation_scores.csv already exists — skipping")
+        print("  [resume] scores already exist — skipping")
         scores     = pd.read_csv(scores_csv)
         candidates = pd.read_csv(candidates_csv)
     else:
@@ -311,30 +333,30 @@ def main():
         scores.to_csv(scores_csv, index=False)
         residues.to_csv(residue_csv, index=False)
 
-        candidates = find_candidates(scores, MUTATION_THRESHOLD)
+        candidates = find_residue_candidates(residues, MUTATION_THRESHOLD)
         candidates.to_csv(candidates_csv, index=False)
 
-    n_above = (scores['mutation_sum'] > 0).sum()
+    n_positive = (scores['mutation_sum'] > 0).sum()
+    print(f"  S/T residues scored:      {total_st}")
     print(f"  Window positions scored:  {len(scores):,}")
-    print(f"  S/T residues contributing: {total_st}")
-    print(f"  Windows with sum > 0:     {n_above:,}")
-    print(f"  Candidates (sum ≥ {MUTATION_THRESHOLD}): {len(candidates)}")
+    print(f"  Windows with sum > 0:     {n_positive:,}")
+    print(f"  Residue candidates (contrib_total ≥ {MUTATION_THRESHOLD}): {len(candidates)}")
     print(f"  → done in {_elapsed(t0)}")
 
     if len(candidates) > 0:
-        print("\n  Top biomarker candidates:")
-        print(f"  {'#':>3}  {'Position':>8}  {'Peptide':<10}  {'Mut Sum':>8}  "
-              f"{'CathL Δ':>8}  {'CathB Δ':>8}")
-        print(f"  {'-'*58}")
+        print("\n  Top residue candidates:")
+        print(f"  {'#':>3}  {'Position':>8}  {'AA':>3}  {'CathL Δ':>8}  "
+              f"{'CathB Δ':>8}  {'Total':>8}")
+        print(f"  {'-'*52}")
         for i, (_, c) in enumerate(candidates.head(15).iterrows(), 1):
-            print(f"  {i:>3}  {c['position']:>8}  {c['peptide']:<10}  "
-                  f"{c['mutation_sum']:>8.4f}  {c['cathL_diff']:>8.4f}  {c['cathB_diff']:>8.4f}")
+            print(f"  {i:>3}  {c['position']:>8}  {c['aa']:>3}  "
+                  f"{c['contrib_L']:>8.4f}  {c['contrib_B']:>8.4f}  {c['contrib_total']:>8.4f}")
 
     total_elapsed = _elapsed(pipeline_start)
     print(f"\n{'='*60}")
     print(f" Done in {total_elapsed}  —  results in: {out_root}/")
-    print(f"   {candidates_csv.name}  ({len(candidates)} candidates)")
-    print(f"   {scores_csv.name}  ({len(scores):,} positions)")
+    print(f"   {candidates_csv.name}  ({len(candidates)} residue candidates)")
+    print(f"   {scores_csv.name}  ({len(scores):,} window positions)")
     print(f"   {residue_csv.name}  ({total_st} S/T residues)")
     print(f"{'='*60}")
 
