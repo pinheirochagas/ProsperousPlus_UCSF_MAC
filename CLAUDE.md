@@ -19,15 +19,15 @@ conda activate prosperousplus
 cd /shared/macdata/groups/ppc/projects/ProsperousPlus
 
 # Run on tau (single protein, fast — ~2 min)
-python run_pipeline.py
+python scripts/run_pipeline.py
 
 # Run on brain-enriched proteins (large dataset, batched)
-python run_pipeline.py --fasta data/brain_elevated/tissue_category_rna_brain_Tissue_Tissue_enriched.fasta
-python run_pipeline.py --fasta data/brain_elevated/tissue_category_rna_brain_Tissue_Tissue_enhanced.fasta
-python run_pipeline.py --fasta data/brain_elevated/tissue_category_rna_brain_Group_Group_enriched.fasta
+python scripts/run_pipeline.py --fasta data/brain_elevated/tissue_category_rna_brain_Tissue_Tissue_enriched.fasta
+python scripts/run_pipeline.py --fasta data/brain_elevated/tissue_category_rna_brain_Tissue_Tissue_enhanced.fasta
+python scripts/run_pipeline.py --fasta data/brain_elevated/tissue_category_rna_brain_Group_Group_enriched.fasta
 
 # Resume an interrupted run (just re-run the same command — completed steps are skipped)
-python run_pipeline.py --fasta data/brain_elevated/...same file...
+python scripts/run_pipeline.py --fasta data/brain_elevated/...same file...
 ```
 
 ---
@@ -90,7 +90,7 @@ results/tau_only_2026-04-23_1430/        ← one folder per input FASTA + date +
   step5_scores/
     mutation_scores.csv                  # all positions with mutation sums
     biomarker_candidates.csv             # positions above 0.475 threshold
-  step6_ptm/                            ← written by annotate_ptm.py (optional)
+  step6_ptm/                            ← written by scripts/annotate_ptm.py (optional)
     annotated_candidates.csv             # long format: one row per (candidate × source) hit
     annotated_summary.csv               # one row per residue, ranked by n_sources then contrib_total
 ```
@@ -132,15 +132,15 @@ conda activate prosperousplus
 cd /shared/macdata/groups/ppc/projects/ProsperousPlus
 
 # Annotate tau candidates (output written to results/<run>/step6_ptm/)
-python annotate_ptm.py \
+python scripts/annotate_ptm.py \
   --candidates results/tau_only_2026-04-23_1430/step5_scores/biomarker_candidates.csv
 
 # Annotate ALL scored S/T residues (not just above-threshold candidates)
-python annotate_ptm.py \
+python scripts/annotate_ptm.py \
   --candidates results/tau_only_2026-04-23_1430/step5_scores/per_residue_contributions.csv
 
 # Custom source file paths (defaults shown above are used when flags are omitted)
-python annotate_ptm.py \
+python scripts/annotate_ptm.py \
   --candidates results/<run>/step5_scores/biomarker_candidates.csv \
   --epsd    "data/reference/ptm_sources/epsd/Homo sapiens.txt" \
   --dbptm   data/reference/ptm_sources/dbptm/Phosphorylation \
@@ -171,13 +171,13 @@ For inputs with many sequences, predictions are split into batches and run in pa
 
 ```bash
 # Default: 50 sequences/batch, cpu_count-1 workers
-python run_pipeline.py --fasta data/brain_elevated/...fasta
+python scripts/run_pipeline.py --fasta data/brain_elevated/...fasta
 
 # Custom batch size and workers
-python run_pipeline.py --fasta data/brain_elevated/...fasta --batch-size 25 --workers 8
+python scripts/run_pipeline.py --fasta data/brain_elevated/...fasta --batch-size 25 --workers 8
 
 # Disable batching (single-sequence files like tau)
-python run_pipeline.py --fasta data/original_files/tau_only.fasta --batch-size 1
+python scripts/run_pipeline.py --fasta data/original_files/tau_only.fasta --batch-size 1
 ```
 
 Batch results are cached under `results/<run>/predictions/*_batches/` and `mutant_predictions/*_batches/`.

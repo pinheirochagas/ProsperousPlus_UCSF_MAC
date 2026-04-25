@@ -80,8 +80,6 @@ from typing import List, Optional
 import pandas as pd
 from Bio import SeqIO
 
-sys.path.insert(0, str(Path(__file__).parent))
-
 from lib import run_prediction_batched
 
 # Proteins per ProsperousPlus call in Phase 1 (Step 1 cohort run)

@@ -54,8 +54,6 @@ from pathlib import Path
 
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).parent))
-
 from lib.ptm_annotate import (
     load_epsd,
     load_dbptm,

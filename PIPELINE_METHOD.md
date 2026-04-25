@@ -384,11 +384,11 @@ both outputs — they remain in `master_biomarker_candidates.csv` for reference.
 
 ```bash
 # Recommended: point to summary.csv — auto-resolves to master_biomarker_candidates.csv
-python annotate_ptm.py \
+python scripts/annotate_ptm.py \
     --candidates results/cohort_tissue_category_rna_brain_Tissue_Tissue_enriched_2026-04-24_0525/summary.csv
 
 # Or point directly to master file
-python annotate_ptm.py \
+python scripts/annotate_ptm.py \
     --candidates results/cohort_.../master_biomarker_candidates.csv
 ```
 
@@ -396,7 +396,7 @@ python annotate_ptm.py \
 
 ## Visualisation
 
-Two figures are produced by `plot_results.py`:
+Two figures are produced by `scripts/plot_results.py`:
 
 ### `pipeline_summary.png` — genome browser view
 
@@ -432,7 +432,7 @@ Top-10 candidates arranged in a 2 × 5 grid (left→right, top→bottom):
 
 ## Parameters reference
 
-### Steps 1–5 (`run_pipeline.py` / `run_cohort.py`)
+### Steps 1–5 (`scripts/run_pipeline.py` / `scripts/run_cohort.py`)
 
 | Parameter          | Default | Flag            | Meaning                             |
 |--------------------|---------|-----------------|-------------------------------------|
@@ -446,7 +446,7 @@ Top-10 candidates arranged in a 2 × 5 grid (left→right, top→bottom):
 | Sentinel proteases | CathD + Lgmn | hardcoded  | Used in Step 1 region detection     |
 | Scoring proteases  | CathL + CathB | hardcoded | Used in Steps 4–5 mutation scoring  |
 
-### Step 6 (`annotate_ptm.py`)
+### Step 6 (`scripts/annotate_ptm.py`)
 
 | Parameter    | Default | Meaning |
 |--------------|---------|---------|

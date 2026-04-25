@@ -61,9 +61,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd  # noqa: E402 (requires prosperousplus conda env)
-
-sys.path.insert(0, str(Path(__file__).parent))
+import pandas as pd
 
 from lib import (
     run_prediction, run_prediction_batched,
